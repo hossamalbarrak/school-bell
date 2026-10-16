@@ -1,0 +1,100 @@
+name: Build APK Fixed
+on: [push]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v3
+      - name: Build Fixed Bell App
+        run: |
+          mkdir -p app/src/main/java/com/schoolbell/hossam
+          mkdir -p app/src/main/res/drawable
+          mkdir -p gradle/wrapper
+          cat > app/build.gradle << 'EOF'
+          plugins { id 'com.android.application' }
+          android {
+            compileSdk 34
+            defaultConfig { applicationId "com.schoolbell.hossam"; minSdk 23; targetSdk 34; versionCode 4; versionName "4.0-fixed-bg" }
+            buildTypes { release { minifyEnabled false } }
+          }
+          EOF
+          cat > settings.gradle << 'EOF'
+          include ':app'
+          EOF
+          cat > build.gradle << 'EOF'
+          buildscript { repositories { google(); mavenCentral() } dependencies { classpath 'com.android.tools.build:gradle:8.1.4' } }
+          allprojects { repositories { google(); mavenCentral() } }
+          EOF
+          cat > gradle/wrapper/gradle-wrapper.properties << 'EOF'
+          distributionUrl=https\://services.gradle.org/distributions/gradle-8.0-bin.zip
+          EOF
+          cat > gradle.properties << 'EOF'
+          android.useAndroidX=true
+          org.gradle.jvmargs=-Xmx2048m
+          EOF
+          cat > app/src/main/AndroidManifest.xml << 'EOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.schoolbell.hossam">
+            <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+            <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+            <uses-permission android:name="android.permission.WAKE_LOCK" />
+            <uses-permission android:name="android.permission.VIBRATE" />
+            <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+            <application android:allowBackup="true" android:icon="@android:drawable/ic_lock_idle_alarm" android:label="جرس المدرسة - حسام" android:theme="@android:style/Theme.Material.Light">
+              <activity android:name=".MainActivity" android:exported="true"><intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter></activity>
+              <receiver android:name=".AlarmReceiver" android:enabled="true" android:exported="true"/>
+            </application>
+          </manifest>
+          EOF
+          cat > app/src/main/java/com/schoolbell/hossam/MainActivity.java << 'EOF'
+          package com.schoolbell.hossam;
+          import android.app.*; import android.content.*; import android.os.*; import android.widget.*; import android.provider.Settings; import java.util.Calendar;
+          public class MainActivity extends Activity {
+            AlarmManager am;
+            protected void onCreate(Bundle b){
+              super.onCreate(b);
+              LinearLayout lay=new LinearLayout(this); lay.setOrientation(1); lay.setPadding(40,80,40,40);
+              TextView t=new TextView(this); t.setText("🔔 جرس المدرسة - حسام البراك\nمصلح - يعمل في الخلفية"); t.setTextSize(19); lay.addView(t);
+              am=(AlarmManager)getSystemService(ALARM_SERVICE);
+              if(Build.VERSION.SDK_INT>=Build.VERSION_CODES.S && !am.canScheduleExactAlarms()){
+                Toast.makeText(this,"فعل اذن المنبه الدقيق",Toast.LENGTH_LONG).show();
+                Intent i=new Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM); i.setData(android.net.Uri.parse("package:"+getPackageName())); startActivity(i);
+              }
+              Button b1=new Button(this); b1.setText("🔔 جرب الجرس هسه"); lay.addView(b1);
+              Button b2=new Button(this); b2.setText("⏰ جرب بعد دقيقة (مضمون بالخلفية)"); lay.addView(b2);
+              Button b3=new Button(this); b3.setText("✅ فعل كل الاجراس 8:00-12:10"); lay.addView(b3);
+              Button b4=new Button(this); b4.setText("❌ الغاء"); lay.addView(b4);
+              TextView info=new TextView(this); info.setText("\n• لا تغير ساعة الهاتف\n• اضغط (بعد دقيقة) ثم اقفل التطبيق\n• سيظهر Toast + اهتزاز + صوت"); lay.addView(info);
+              ScrollView sv=new ScrollView(this); sv.addView(lay); setContentView(sv);
+              b1.setOnClickListener(v->{ sendBroadcast(new Intent(this,AlarmReceiver.class)); Toast.makeText(this,"ارسلت الجرس",0).show(); });
+              b2.setOnClickListener(v->{ long when=System.currentTimeMillis()+60000; PendingIntent pi=PendingIntent.getBroadcast(this,9999,new Intent(this,AlarmReceiver.class),PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE); am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP,when,pi); Toast.makeText(this,"راح يدك بعد 60 ثانية - اقفل التطبيق الان",1).show(); });
+              b3.setOnClickListener(v->{ String[] ts={"08:00","08:45","09:30","09:50","10:35","11:20","12:10"}; int c=0; for(String tt:ts){ String[] p=tt.split(":"); int h=Integer.parseInt(p[0]); int m=Integer.parseInt(p[1]); Calendar ca=Calendar.getInstance(); ca.set(11,h); ca.set(12,m); ca.set(13,0); if(ca.getTimeInMillis()<System.currentTimeMillis()) ca.add(5,1); PendingIntent pi=PendingIntent.getBroadcast(this,c,new Intent(this,AlarmReceiver.class),PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE); am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP,ca.getTimeInMillis(),pi); c++; } Toast.makeText(this,"تم تفعيل "+c+" اجراس",1).show(); });
+              b4.setOnClickListener(v->{ for(int i=0;i<20;i++){ PendingIntent pi=PendingIntent.getBroadcast(this,i,new Intent(this,AlarmReceiver.class),PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE); am.cancel(pi);} Toast.makeText(this,"تم الالغاء",0).show(); });
+            }
+          }
+          EOF
+          cat > app/src/main/java/com/schoolbell/hossam/AlarmReceiver.java << 'EOF'
+          package com.schoolbell.hossam;
+          import android.content.*; import android.media.*; import android.os.*; import android.widget.Toast;
+          public class AlarmReceiver extends BroadcastReceiver{
+            public void onReceive(Context ctx, Intent i){
+              try{ Toast.makeText(ctx,"🔔 جرس المدرسة يدق!",Toast.LENGTH_LONG).show(); }catch(Exception e){}
+              try{ Vibrator v=(Vibrator)ctx.getSystemService(Context.VIBRATOR_SERVICE); if(v!=null) v.vibrate(4000); }catch(Exception e){}
+              try{
+                Ringtone r=RingtoneManager.getRingtone(ctx,RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM));
+                if(r==null) r=RingtoneManager.getRingtone(ctx,RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION));
+                if(r!=null) r.play();
+              }catch(Exception e){}
+            }
+          }
+          EOF
+          gradle :app:assembleDebug --no-daemon
+      - uses: actions/upload-artifact@v4
+        with:
+          name: school-bell-FIXED-BG-WORKS
+          path: app/build/outputs/apk/debug/app-debug.apk
