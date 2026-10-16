@@ -1,0 +1,117 @@
+name: Build APK
+on: [push, workflow_dispatch]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@v3
+      - name: Create Pro Project
+        run: |
+          mkdir -p app/src/main/java/com/schoolbell
+          mkdir -p app/src/main/res/layout
+          cat > settings.gradle <<'SG'
+          include ':app'
+          SG
+          cat > build.gradle <<'BG'
+          buildscript {
+              repositories { google(); mavenCentral() }
+              dependencies { classpath 'com.android.tools.build:gradle:8.2.0' }
+          }
+          allprojects { repositories { google(); mavenCentral() } }
+          BG
+          cat > app/build.gradle <<'ABG'
+          plugins { id 'com.android.application' }
+          android {
+              namespace 'com.schoolbell'
+              compileSdk 34
+              defaultConfig {
+                  applicationId "com.schoolbell"
+                  minSdk 21
+                  targetSdk 34
+                  versionCode 3
+                  versionName "3.0"
+              }
+          }
+          ABG
+          cat > app/src/main/AndroidManifest.xml <<'MF'
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android"><uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"/><uses-permission android:name="android.permission.WAKE_LOCK"/><uses-permission android:name="android.permission.VIBRATE"/><application android:label="جرس المدرسة"><activity android:name=".MainActivity" android:exported="true" android:theme="@android:style/Theme.Material.Light"><intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter></activity><receiver android:name=".AlarmReceiver"/></application></manifest>
+          MF
+          cat > app/src/main/java/com/schoolbell/MainActivity.java <<'MA'
+          package com.schoolbell;
+          import android.app.*;import android.content.*;import android.os.*;import android.widget.*;import android.graphics.*;import java.util.*;
+          public class MainActivity extends Activity {
+              int[] h={8,8,8,9,9,10,10,11,11,12};
+              int[] m={0,45,50,35,40,25,35,20,25,10};
+              String[] names={"طابور الصباح","نهاية الحصة 1","بداية الحصة 2","نهاية الحصة 2","بداية الحصة 3","نهاية الحصة 3","بداية الحصة 4","نهاية الحصة 4","بداية الحصة 5","نهاية الدوام"};
+              protected void onCreate(Bundle b){
+                  super.onCreate(b);
+                  ScrollView sv=new ScrollView(this);
+                  LinearLayout root=new LinearLayout(this);root.setOrientation(1);
+                  LinearLayout header=new LinearLayout(this);header.setOrientation(1);header.setBackgroundColor(Color.parseColor("#1976D2"));header.setPadding(40,70,40,70);
+                  TextView t1=new TextView(this);t1.setText("🔔 جرس المدرسة الذكي");t1.setTextSize(24);t1.setTextColor(Color.WHITE);t1.setTypeface(null,Typeface.BOLD);
+                  TextView t2=new TextView(this);t2.setText("تصميم الاستاذ حسام البراك");t2.setTextSize(17);t2.setTextColor(Color.WHITE);t2.setTypeface(null,Typeface.BOLD);t2.setPadding(0,15,0,0);
+                  TextView t3=new TextView(this);t3.setText("استاذ اللغة العربية في ثانوية التاجي");t3.setTextSize(14);t3.setTextColor(Color.parseColor("#BBDEFB"));t3.setPadding(0,8,0,0);
+                  header.addView(t1);header.addView(t2);header.addView(t3);root.addView(header);
+                  LinearLayout list=new LinearLayout(this);list.setOrientation(1);list.setPadding(20,20,20,20);
+                  for(int i=0;i<h.length;i++){
+                      LinearLayout row=new LinearLayout(this);row.setOrientation(0);row.setBackgroundColor(i%2==0?Color.WHITE:Color.parseColor("#F5F5F5"));row.setPadding(20,25,20,25);
+                      TextView num=new TextView(this);num.setText((i+1)+"");num.setWidth(60);num.setTextColor(Color.parseColor("#1976D2"));num.setTypeface(null,Typeface.BOLD);
+                      LinearLayout col=new LinearLayout(this);col.setOrientation(1);
+                      TextView name=new TextView(this);name.setText(names[i]);name.setTextSize(16);name.setTypeface(null,Typeface.BOLD);
+                      TextView time=new TextView(this);time.setText(String.format("%02d:%02d",h[i],m[i]));time.setTextColor(Color.GRAY);
+                      col.addView(name);col.addView(time);
+                      TextView icon=new TextView(this);icon.setText("🔔");icon.setTextSize(20);
+                      row.addView(num);row.addView(col);row.addView(icon);
+                      LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,-2);lp.setMargins(0,0,0,2);row.setLayoutParams(lp);
+                      list.addView(row);
+                  }
+                  root.addView(list);
+                  LinearLayout btns=new LinearLayout(this);btns.setOrientation(1);btns.setPadding(30,20,30,80);
+                  Button btnOn=new Button(this);btnOn.setText("✅ فعل جميع الاجراس");btnOn.setBackgroundColor(Color.parseColor("#4CAF50"));btnOn.setTextColor(Color.WHITE);
+                  Button btnTest=new Button(this);btnTest.setText("🔊 جرب صوت الجرس");btnTest.setBackgroundColor(Color.parseColor("#FF9800"));btnTest.setTextColor(Color.WHITE);
+                  btnOn.setOnClickListener(v->{
+                      AlarmManager am=(AlarmManager)getSystemService(ALARM_SERVICE);
+                      for(int i=0;i<h.length;i++){
+                          Calendar c=Calendar.getInstance();c.set(Calendar.HOUR_OF_DAY,h[i]);c.set(Calendar.MINUTE,m[i]);c.set(Calendar.SECOND,0);
+                          if(c.getTimeInMillis()<System.currentTimeMillis())c.add(Calendar.DAY_OF_YEAR,1);
+                          Intent it=new Intent(this,AlarmReceiver.class);it.putExtra("name",names[i]);
+                          PendingIntent pi=PendingIntent.getBroadcast(this,i,it,PendingIntent.FLAG_IMMUTABLE);
+                          am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP,c.getTimeInMillis(),pi);
+                      }
+                      Toast.makeText(this,"تم تفعيل 10 اجراس - تصميم حسام البراك",1).show();
+                  });
+                  btnTest.setOnClickListener(v->{Intent it=new Intent(this,AlarmReceiver.class);it.putExtra("name","تجربة");sendBroadcast(it);});
+                  btns.addView(btnOn);btns.addView(btnTest);root.addView(btns);sv.addView(root);setContentView(sv);
+              }
+          }
+          MA
+          cat > app/src/main/java/com/schoolbell/AlarmReceiver.java <<'AR'
+          package com.schoolbell;
+          import android.content.*;import android.media.*;import android.os.*;import android.app.*;
+          public class AlarmReceiver extends BroadcastReceiver{
+              public void onReceive(Context c,Intent i){
+                  String name=i.getStringExtra("name");if(name==null)name="جرس المدرسة";
+                  try{
+                      MediaPlayer mp=MediaPlayer.create(c,android.provider.Settings.System.DEFAULT_ALARM_ALERT_URI);
+                      if(mp!=null){mp.setOnCompletionListener(m->m.release());mp.start();}
+                      Vibrator vib=(Vibrator)c.getSystemService(Context.VIBRATOR_SERVICE);if(vib!=null)vib.vibrate(1000);
+                      NotificationManager nm=(NotificationManager)c.getSystemService(Context.NOTIFICATION_SERVICE);
+                      NotificationChannel ch=new NotificationChannel("bell","bell",NotificationManager.IMPORTANCE_HIGH);nm.createNotificationChannel(ch);
+                      Notification not=new Notification.Builder(c,"bell").setContentTitle("🔔 "+name).setContentText("تصميم الاستاذ حسام البراك - استاذ اللغة العربية في ثانوية التاجي").setSmallIcon(android.R.drawable.ic_lock_idle_alarm).build();
+                      nm.notify((int)System.currentTimeMillis(),not);
+                  }catch(Exception e){}
+              }
+          }
+          AR
+          echo '<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"/>' > app/src/main/res/layout/d.xml
+      - name: Build APK
+        run: gradle assembleDebug
+      - uses: actions/upload-artifact@v4
+        with:
+          name: school-bell-final
+          path: app/build/outputs/apk/debug/*.apk
