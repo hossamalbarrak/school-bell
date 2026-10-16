@@ -1,0 +1,55 @@
+name: Build APK
+on: workflow_dispatch
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: android-actions/setup-android@v3
+      - run: |
+          mkdir -p app/src/main/java/com/schoolbell
+          cat > app/build.gradle <<'EOF'
+          plugins { id 'com.android.application' }
+          android { namespace 'com.schoolbell'; compileSdk 34; defaultConfig { applicationId "com.schoolbell"; minSdk 21; targetSdk 34; versionCode 1; versionName "1.0" } }
+          EOF
+          echo "include ':app'" > settings.gradle
+          cat > build.gradle <<'EOF'
+          buildscript { repositories { google(); mavenCentral() }; dependencies { classpath 'com.android.tools.build:gradle:8.2.0' } }
+          allprojects { repositories { google(); mavenCentral() } }
+          EOF
+          mkdir -p app/src/main/res/layout
+          cat > app/src/main/AndroidManifest.xml <<'EOF'
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+            <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"/>
+            <application android:label="جرس المدرسة">
+              <activity android:name=".MainActivity" android:exported="true"><intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter></activity>
+              <receiver android:name=".AlarmReceiver"/>
+            </application>
+          </manifest>
+          EOF
+          cat > app/src/main/java/com/schoolbell/MainActivity.java <<'EOF'
+          package com.schoolbell; import android.app.*; import android.content.*; import android.os.*; import android.widget.*; import java.util.Calendar;
+          public class MainActivity extends Activity {
+            int[] h={8,8,8,9,9,10,10,11,11,12}; int[] m={0,45,50,35,40,25,35,20,25,10};
+            protected void onCreate(Bundle b){super.onCreate(b); LinearLayout l=new LinearLayout(this);l.setOrientation(1);l.setPadding(50,100,50,100);
+            TextView t=new TextView(this);t.setText("جرس المدرسة - استاذ حسام\nتم التفعيل 10 اوقات");t.setTextSize(22);l.addView(t);
+            Button btn=new Button(this);btn.setText("فعل الجرس الان");btn.setOnClickListener(v->{AlarmManager am=(AlarmManager)getSystemService(ALARM_SERVICE);
+            for(int i=0;i<h.length;i++){Calendar c=Calendar.getInstance();c.set(Calendar.HOUR_OF_DAY,h[i]);c.set(Calendar.MINUTE,m[i]);c.set(Calendar.SECOND,0);
+            if(c.getTimeInMillis()<System.currentTimeMillis())c.add(Calendar.DAY_OF_YEAR,1);Intent it=new Intent(this,AlarmReceiver.class);PendingIntent pi=PendingIntent.getBroadcast(this,i,it,PendingIntent.FLAG_IMMUTABLE);am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP,c.getTimeInMillis(),pi);}Toast.makeText(this,"تفعل!",1).show();});l.addView(btn);setContentView(l);}
+          }
+          EOF
+          cat > app/src/main/java/com/schoolbell/AlarmReceiver.java <<'EOF'
+          package com.schoolbell; import android.content.*; import android.media.*; public class AlarmReceiver extends BroadcastReceiver {
+          public void onReceive(Context c, Intent i){MediaPlayer mp=MediaPlayer.create(c, android.provider.Settings.System.DEFAULT_ALARM_ALERT_URI); if(mp!=null)mp.start();}}
+          EOF
+          echo '<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"/>' > app/src/main/res/layout/d.xml
+          gradle wrapper
+      - run:./gradlew assembleDebug
+      - uses: actions/upload-artifact@v4
+        with:
+          name: school-bell-apk
+          path: app/build/outputs/apk/debug/*.apk
